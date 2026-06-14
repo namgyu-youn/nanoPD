@@ -47,9 +47,10 @@ def extract_kv_to_pinned(
     block_table: List[int],
     buf: PinnedKVBuffer,
 ):
-    for i, bid in enumerate(block_table):
-        buf.k[:, i].copy_(k_cache[:, bid])
-        buf.v[:, i].copy_(v_cache[:, bid])
+    indices = torch.tensor(block_table, dtype=torch.long, device=k_cache.device)
+    n = len(block_table)
+    buf.k[:, :n].copy_(k_cache[:, indices])
+    buf.v[:, :n].copy_(v_cache[:, indices])
 
 
 def load_kv_from_pinned(
@@ -61,9 +62,10 @@ def load_kv_from_pinned(
 ):
     ctx = torch.cuda.stream(stream) if stream is not None else nullcontext()
     with ctx:
+        nb = stream is not None
         for i, bid in enumerate(block_table):
-            k_cache[:, bid].copy_(buf.k[:, i], non_blocking=(stream is not None))
-            v_cache[:, bid].copy_(buf.v[:, i], non_blocking=(stream is not None))
+            k_cache[:, bid].copy_(buf.k[:, i], non_blocking=nb)
+            v_cache[:, bid].copy_(buf.v[:, i], non_blocking=nb)
 
 
 def transfer_kv(src_k, src_v, dst_k, dst_v, block_table, stream=None, buf=None) -> str:
@@ -73,9 +75,10 @@ def transfer_kv(src_k, src_v, dst_k, dst_v, block_table, stream=None, buf=None) 
     if _check_p2p(src_device, dst_device) and src_k is not None:
         ctx = torch.cuda.stream(stream) if stream is not None else nullcontext()
         with ctx:
-            for i, bid in enumerate(block_table):
-                dst_k[:, bid].copy_(src_k[:, bid], non_blocking=(stream is not None))
-                dst_v[:, bid].copy_(src_v[:, bid], non_blocking=(stream is not None))
+            nb = stream is not None
+            for bid in block_table:
+                dst_k[:, bid].copy_(src_k[:, bid], non_blocking=nb)
+                dst_v[:, bid].copy_(src_v[:, bid], non_blocking=nb)
         return "p2p"
     else:
         assert buf is not None
