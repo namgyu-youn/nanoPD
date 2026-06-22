@@ -63,9 +63,12 @@ def load_kv_from_pinned(
     ctx = torch.cuda.stream(stream) if stream is not None else nullcontext()
     with ctx:
         nb = stream is not None
-        for i, bid in enumerate(block_table):
-            k_cache[:, bid].copy_(buf.k[:, i], non_blocking=nb)
-            v_cache[:, bid].copy_(buf.v[:, i], non_blocking=nb)
+        indices = torch.tensor(block_table, dtype=torch.long, device=k_cache.device)
+        n = len(block_table)
+        tmp_k = buf.k[:, :n].to(k_cache.device, non_blocking=nb)
+        tmp_v = buf.v[:, :n].to(v_cache.device, non_blocking=nb)
+        k_cache[:, indices] = tmp_k
+        v_cache[:, indices] = tmp_v
 
 
 def transfer_kv(src_k, src_v, dst_k, dst_v, block_table, stream=None, buf=None) -> str:
